@@ -39,6 +39,7 @@ endef
 define Package/dnsmasq
 $(call Package/dnsmasq/Default)
   VARIANT:=nodhcpv6
+  DEPENDS:=+configctl
 endef
 
 define Package/dnsmasq-dhcpv6
@@ -135,6 +136,17 @@ define Package/dnsmasq/install
 	$(INSTALL_BIN) ./files/dnsmasq.init $(1)/etc/init.d/dnsmasq
 	$(INSTALL_DIR) $(1)/etc/hotplug.d/iface
 	$(INSTALL_DATA) ./files/dnsmasq.hotplug $(1)/etc/hotplug.d/iface/25-dnsmasq
+
+
+	$(INSTALL_DIR) $(1)/etc/yang
+	$(INSTALL_CONF) \
+	$(PKG_BUILD_DIR)/config/yang/* \
+	$(1)/etc/yang
+
+	$(INSTALL_DIR) $(1)/etc/configctl
+	$(INSTALL_CONF) \
+	$(PKG_BUILD_DIR)/config/xml/* \
+	$(1)/etc/configctl
 endef
 
 Package/dnsmasq-dhcpv6/install = $(Package/dnsmasq/install)

@@ -1,0 +1,231 @@
+From d684958da7a4c27ab7cd390ab28098e6f19af02a Mon Sep 17 00:00:00 2001
+From: Mislav Novakovic <mislav.novakovic@sartura.hr>
+Date: Thu, 10 Dec 2015 15:44:51 +0100
+Subject: [PATCH 1/2] add configctl support
+
+Signed-off-by: Mislav Novakovic <mislav.novakovic@sartura.hr>
+---
+ Makefile                            |  7 ++--
+ config/xml/dnsmasq.xml              |  9 +++++
+ config/yang/dnsmasq@2015-12-01.yang | 32 +++++++++++++++++
+ config/yang/dnsmasq@2015-12-01.yin  | 35 ++++++++++++++++++
+ src/dnsmasq.c                       | 72 ++++++++++++++++++++++++++++++++++++-
+ 5 files changed, 151 insertions(+), 4 deletions(-)
+ create mode 100644 config/xml/dnsmasq.xml
+ create mode 100644 config/yang/dnsmasq@2015-12-01.yang
+ create mode 100644 config/yang/dnsmasq@2015-12-01.yin
+
+diff --git a/Makefile b/Makefile
+index 59750bc..048c668 100644
+--- a/Makefile
++++ b/Makefile
+@@ -24,11 +24,12 @@ MANDIR        = $(PREFIX)/share/man
+ LOCALEDIR     = $(PREFIX)/share/locale
+ BUILDDIR      = $(SRC)
+ DESTDIR       = 
+-CFLAGS        = -Wall -W -O2
+-LDFLAGS       = 
++INCLUDES      = -I /usr/local/include/libconfigctl
++CFLAGS        = -Wall -W -O2 $(INCLUDES)
++LDFLAGS       = -L/usr/local/lib/
+ COPTS         = 
+ RPM_OPT_FLAGS = 
+-LIBS          = 
++LIBS          = -lconfigctl
+ 
+ #################################################################
+ 
+diff --git a/config/xml/dnsmasq.xml b/config/xml/dnsmasq.xml
+new file mode 100644
+index 0000000..3a5da13
+--- /dev/null
++++ b/config/xml/dnsmasq.xml
+@@ -0,0 +1,9 @@
++<libyang>
++  <dnsmasq xmlns="urn:ietf:params:xml:ns:yang:dnsmasq">
++    <port>53</port>
++    <username>root</username>
++    <groupname>root</groupname>
++    <addr4_netmask>32</addr4_netmask>
++    <addr6_netmask>128</addr6_netmask>
++  </dnsmasq>
++</libyang>
+diff --git a/config/yang/dnsmasq@2015-12-01.yang b/config/yang/dnsmasq@2015-12-01.yang
+new file mode 100644
+index 0000000..0c34e87
+--- /dev/null
++++ b/config/yang/dnsmasq@2015-12-01.yang
+@@ -0,0 +1,32 @@
++module dnsmasq {
++  namespace "urn:ietf:params:xml:ns:yang:dnsmasq";
++  prefix ob;
++
++  description
++    "dnsmasq yang model";
++  contact
++    "mislav.novakovic@sartura.hr";
++
++  revision 2015-12-01 {
++    description
++      "Inital revision";
++  }
++
++  container dnsmasq {
++    leaf port {
++      type int32;
++    }
++    leaf username {
++      type string;
++    }
++    leaf groupname {
++      type string;
++    }
++    leaf addr4_netmask {
++      type int32;
++    }
++    leaf addr6_netmask {
++      type int32;
++    }
++  }
++}
+diff --git a/config/yang/dnsmasq@2015-12-01.yin b/config/yang/dnsmasq@2015-12-01.yin
+new file mode 100644
+index 0000000..0c6c342
+--- /dev/null
++++ b/config/yang/dnsmasq@2015-12-01.yin
+@@ -0,0 +1,35 @@
++<?xml version="1.0" encoding="UTF-8"?>
++<module name="dnsmasq"
++        xmlns="urn:ietf:params:xml:ns:yang:yin:1"
++        xmlns:ob="urn:ietf:params:xml:ns:yang:dnsmasq">
++  <namespace uri="urn:ietf:params:xml:ns:yang:dnsmasq"/>
++  <prefix value="ob"/>
++  <description>
++    <text>dnsmasq yang model</text>
++  </description>
++  <contact>
++    <text>mislav.novakovic@sartura.hr</text>
++  </contact>
++  <revision date="2015-12-01">
++    <description>
++      <text>Inital revision</text>
++    </description>
++  </revision>
++  <container name="dnsmasq">
++    <leaf name="port">
++      <type name="int32"/>
++    </leaf>
++    <leaf name="username">
++      <type name="string"/>
++    </leaf>
++    <leaf name="groupname">
++      <type name="string"/>
++    </leaf>
++    <leaf name="addr4_netmask">
++      <type name="int32"/>
++    </leaf>
++    <leaf name="addr6_netmask">
++      <type name="int32"/>
++    </leaf>
++  </container>
++</module>
+diff --git a/src/dnsmasq.c b/src/dnsmasq.c
+index 19a6428..bbb8214 100644
+--- a/src/dnsmasq.c
++++ b/src/dnsmasq.c
+@@ -18,6 +18,7 @@
+ #define DNSMASQ_COMPILE_OPTS
+ 
+ #include "dnsmasq.h"
++#include <configctl.h>
+ 
+ struct daemon *daemon;
+ 
+@@ -32,6 +33,28 @@ static void fatal_event(struct event_desc *ev, char *msg);
+ static int read_event(int fd, struct event_desc *evp, char **msg);
+ static void poll_resolv(int force, int do_reload, time_t now);
+ 
++struct configctl *ctl_init()
++{
++	struct configctl *ctx = NULL;
++	int ret;
++
++	char *config_xml = "/etc/configctl/dnsmasq.xml";
++	char *yang_file = "/etc/yang/dnsmasq@2015-12-01.yin";
++	char *yang_folder = "/etc/yang/";
++
++	ctx = calloc(1, sizeof(struct configctl));
++	if (!ctx)
++		return NULL;
++
++	ret = configctl_init(ctx, config_xml, yang_file, yang_folder);
++	if (ret) {
++		printf("error in configctl_init()\n");
++		return NULL;
++	}
++
++	return ctx;
++}
++
+ int main (int argc, char **argv)
+ {
+   int bind_fallback = 0;
+@@ -87,7 +110,54 @@ int main (int argc, char **argv)
+   rand_init(); /* Must precede read_opts() */
+   
+   read_opts(argc, argv, compile_opts);
+- 
++
++  printf("---------------------------------------------\n");
++  struct configctl *ctx = ctl_init();
++  if (ctx)
++    {
++    const char *tmp;
++    int port, addr4_netmask, addr6_netmask;
++    int ret;
++
++    tmp = configctl_get_string(ctx, "dnsmasq/username");
++    if (!tmp)
++    	printf("error in configctl_get_string()\n");
++    else
++        daemon->username = strdup(tmp);
++
++    tmp = configctl_get_string(ctx, "dnsmasq/groupname");
++    if (!tmp)
++    	printf("error in configctl_get_string()\n");
++    else
++        daemon->groupname = strdup(tmp);
++
++    ret = configctl_get_int32(ctx, "dnsmasq/port", &port);
++    if (ret)
++    	printf("error in configctl_get_int32()\n");
++    else
++        daemon->port = port;
++
++    ret = configctl_get_int32(ctx, "dnsmasq/addr4_netmask", &addr4_netmask);
++    if (ret)
++    	printf("error in configctl_get_int32()\n");
++    else
++        daemon->addr4_netmask = addr4_netmask;
++
++    ret = configctl_get_int32(ctx, "dnsmasq/addr6_netmask", &addr6_netmask);
++    if (ret)
++    	printf("error in configctl_get_int32()\n");
++    else
++        daemon->addr6_netmask = addr6_netmask;
++
++    printf("deamon->username is %s\n", daemon->username);
++    printf("deamon->groupname is %s\n", daemon->groupname);
++    printf("deamon->port is %d\n", daemon->port);
++    printf("deamon->addr4_netmask is %d\n", daemon->addr4_netmask);
++    printf("deamon->addr6_netmask is %d\n", daemon->addr6_netmask);
++
++    configctl_destroy(ctx);
++    }
++
+   if (daemon->edns_pktsz < PACKETSZ)
+     daemon->edns_pktsz = PACKETSZ;
+ 
+-- 
+2.6.2
+
